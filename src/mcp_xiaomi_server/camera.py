@@ -33,12 +33,18 @@ async def _run(args: list[str], timeout: float) -> tuple[int, bytes, bytes]:
 
 
 async def snapshot(camera_id: str, rtsp_url: str, timeout: float = 20.0) -> bytes:
-    """Grab a single JPEG frame from the camera's RTSP stream."""
+    """Grab a single clean JPEG frame from the camera's RTSP stream.
+
+    Selects the first key frame (I-frame) rather than the first decodable frame,
+    so the picture is fully decoded — grabbing frame 1 blindly on an HEVC stream
+    often lands mid-GOP and yields a gray/garbled image.
+    """
     path = os.path.join(tempfile.gettempdir(), f"xiaomi_snap_{camera_id}_{int(time.time())}.jpg")
     args = [
         FFMPEG, "-nostdin", "-loglevel", "error",
         "-rtsp_transport", "tcp", "-i", rtsp_url,
-        "-frames:v", "1", "-q:v", "2", "-y", path,
+        "-vf", "select=eq(pict_type\\,I)", "-frames:v", "1", "-vsync", "0",
+        "-q:v", "2", "-y", path,
     ]
     try:
         rc, _out, err = await _run(args, timeout)
