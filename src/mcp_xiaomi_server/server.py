@@ -254,7 +254,8 @@ async def _run_sse():
     """Run server via SSE/HTTP transport (for remote MCP clients)."""
     try:
         from starlette.applications import Starlette
-        from starlette.routing import Route as StarletteRoute
+        from starlette.responses import Response
+        from starlette.routing import Mount, Route as StarletteRoute
         import uvicorn
     except ImportError:
         print(
@@ -274,11 +275,12 @@ async def _run_sse():
             request.scope, request.receive, request._send
         ) as (read_stream, write_stream):
             await server.run(read_stream, write_stream, server.create_initialization_options())
+        return Response()
 
     app = Starlette(
         routes=[
-            StarletteRoute("/sse", endpoint=handle_sse),
-            StarletteRoute("/messages/", endpoint=transport_instance.handle_post_message, methods=["POST"]),
+            StarletteRoute("/sse", endpoint=handle_sse, methods=["GET"]),
+            Mount("/messages/", app=transport_instance.handle_post_message),
         ]
     )
 
