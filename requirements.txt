@@ -1,5 +1,5 @@
 mcp>=1.0.0
-python-miio>=0.6.0
+python-miio>=0.5.12
 python-dotenv>=1.0.0
 starlette>=0.37.0
 uvicorn>=0.30.0
