@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  mcp-xiaomi-server:
+    image: ${MCP_IMAGE:-harbor.zkjgy.online/library/mcp-xiaomi-server:latest}
+    container_name: mcp-xiaomi-server
+    restart: unless-stopped
+
+    # host 网络：本地控制米家设备需要与设备处于同一局域网，直接收发
+    # UDP:54321 广播/单播。host 模式下 MCP_PORT 直接绑定在宿主机上，
+    # 因此不使用 ports 映射。（仅 Linux 宿主机支持 host 模式）
+    network_mode: host
+
+    environment:
+      - MCP_TRANSPORT=${MCP_TRANSPORT:-sse}
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=${MCP_PORT:-8092}
+      - MCP_XIAOMI_DEVICES=/app/config/devices.json
+      - MCP_XIAOMI_TIMEOUT=${MCP_XIAOMI_TIMEOUT:-5}
+
+    volumes:
+      # 真实设备清单（含 IP/token），在宿主机准备好后挂载进来
+      - ./devices.json:/app/config/devices.json:ro
+
+    labels:
+      - "mcp.server.name=mcp-xiaomi-server"
+      - "mcp.server.version=${MCP_VERSION:-latest}"
+      - "mcp.server.description=Local Mijia WiFi device status/control server for LLM agents"

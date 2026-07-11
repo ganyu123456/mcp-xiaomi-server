@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+.env
+# 真实设备清单含 token，切勿提交
+devices.json
+*.tar.gz
+*.zip
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

@@ -1,0 +1,37 @@
+[
+  {
+    "id": "living_room_plug",
+    "name": "客厅智能插座",
+    "ip": "192.168.31.100",
+    "token": "0123456789abcdef0123456789abcdef",
+    "model": "cuco.plug.v3",
+    "protocol": "miot",
+    "properties": {
+      "switch_on": { "siid": 2, "piid": 1, "access": "rw", "desc": "开关" },
+      "temperature": { "siid": 2, "piid": 6, "access": "r", "desc": "设备温度(°C)" }
+    }
+  },
+  {
+    "id": "bedroom_humidifier",
+    "name": "卧室加湿器",
+    "ip": "192.168.31.101",
+    "token": "0123456789abcdef0123456789abcdef",
+    "model": "deerma.humidifier.jsq2g",
+    "protocol": "miot",
+    "properties": {
+      "power": { "siid": 2, "piid": 1, "access": "rw", "desc": "开关" },
+      "target_humidity": { "siid": 2, "piid": 5, "access": "rw", "desc": "目标湿度(%)" },
+      "humidity": { "siid": 7, "piid": 9, "access": "r", "desc": "当前湿度(%)" },
+      "temperature": { "siid": 7, "piid": 7, "access": "r", "desc": "温度(°C)" }
+    }
+  },
+  {
+    "id": "ac_partner",
+    "name": "空调伴侣",
+    "ip": "192.168.31.102",
+    "token": "0123456789abcdef0123456789abcdef",
+    "model": "lumi.acpartner.mcn02",
+    "protocol": "legacy",
+    "properties": ["power", "mode", "fan_level", "load_power"]
+  }
+]
