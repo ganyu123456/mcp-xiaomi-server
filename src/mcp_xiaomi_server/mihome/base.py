@@ -31,12 +31,8 @@ class PropertySpec:
     name: str
     siid: int
     piid: int
-    access: str = "r"  # "r" (read-only) or "rw" (readable + writable)
+    access: str = "r"  # informational only; this server is read-only
     desc: str = ""
-
-    @property
-    def writable(self) -> bool:
-        return "w" in self.access.lower()
 
 
 @dataclass
@@ -45,20 +41,41 @@ class DeviceConfig:
 
     id: str
     name: str
-    ip: str
-    token: str
+    ip: str = ""
+    token: str = ""
     model: str = ""
-    protocol: str = "miot"  # "miot" or "legacy"
+    protocol: str = "miot"  # "miot", "legacy" or "camera"
     # miot: dict[name -> PropertySpec]; legacy: list[str] of prop names
     properties: Union[dict[str, PropertySpec], list[str]] = field(default_factory=dict)
+    # camera protocol only: local RTSP stream URL to pull snapshots/clips from
+    rtsp_url: str = ""
+
+    @property
+    def is_camera(self) -> bool:
+        return self.protocol == "camera"
 
     @classmethod
     def from_dict(cls, raw: dict) -> "DeviceConfig":
-        for required in ("id", "ip", "token"):
-            if not raw.get(required):
-                raise DeviceError(raw.get("id", "?"), f"Config missing required field '{required}'.")
+        if not raw.get("id"):
+            raise DeviceError(raw.get("id", "?"), "Config missing required field 'id'.")
 
         protocol = (raw.get("protocol") or "miot").strip().lower()
+
+        if protocol == "camera":
+            if not raw.get("rtsp_url"):
+                raise DeviceError(raw["id"], "Camera config missing required field 'rtsp_url'.")
+            return cls(
+                id=str(raw["id"]),
+                name=str(raw.get("name", raw["id"])),
+                model=str(raw.get("model", "")),
+                protocol="camera",
+                rtsp_url=str(raw["rtsp_url"]),
+            )
+
+        for required in ("ip", "token"):
+            if not raw.get(required):
+                raise DeviceError(raw["id"], f"Config missing required field '{required}'.")
+
         raw_props = raw.get("properties", {})
 
         if protocol == "miot":

@@ -6,7 +6,7 @@ by a timeout to keep the async MCP server responsive.
 """
 
 import asyncio
-from typing import Any, Optional
+from typing import Any
 
 from .base import DeviceConfig, DeviceError, DeviceInfo, DeviceStatus, PropertySpec
 
@@ -145,33 +145,3 @@ class LocalDevice:
             return values.get(name)
         values = await self._read_legacy([name])
         return values.get(name)
-
-    # -- writes --------------------------------------------------------------
-
-    async def set_property(self, name: str, value: Any) -> dict:
-        if self.config.protocol != "miot":
-            raise DeviceError(
-                self.config.id,
-                "set_property only supports MIoT devices; use xiaomi_raw_command for legacy devices.",
-            )
-        specs = self.config.properties
-        spec = specs.get(name) if isinstance(specs, dict) else None
-        if spec is None:
-            raise DeviceError(
-                self.config.id,
-                f"Unknown property '{name}'. Known: {self.config.property_names()}",
-            )
-        if not spec.writable:
-            raise DeviceError(self.config.id, f"Property '{name}' is read-only (access={spec.access}).")
-
-        query = [{"did": name, "siid": spec.siid, "piid": spec.piid, "value": value}]
-        resp = await self._call("set_properties", query)
-        code = None
-        if isinstance(resp, list) and resp and isinstance(resp[0], dict):
-            code = resp[0].get("code")
-        if code not in (0, None):
-            raise DeviceError(self.config.id, f"set_property failed (code={code}).")
-        return {"device_id": self.config.id, "property": name, "value": value, "code": code}
-
-    async def raw_command(self, command: str, params: Optional[list] = None) -> Any:
-        return await self._call(command, params if params is not None else [])

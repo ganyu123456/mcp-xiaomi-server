@@ -11,6 +11,7 @@ Usage:
 """
 
 import asyncio
+import base64
 import json
 import os
 import sys
@@ -20,8 +21,9 @@ from dotenv import load_dotenv
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.server.sse import SseServerTransport
-from mcp.types import Tool, TextContent
+from mcp.types import Tool, TextContent, ImageContent
 
+from . import camera
 from .mihome.base import DeviceError
 from .mihome.registry import DeviceRegistry
 
@@ -75,22 +77,6 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="xiaomi_set_property",
-            description="设置（控制）某个设备的可写属性，例如开关插座、调节加湿器目标湿度。仅 MIoT 设备且属性 access 含 'w' 时可用。",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "device_id": {"type": "string", "description": "设备 id"},
-                    "property": {"type": "string", "description": "要设置的可写属性名"},
-                    "value": {
-                        "type": ["boolean", "integer", "number", "string"],
-                        "description": "目标值，类型需与属性匹配（开关类用 true/false）",
-                    },
-                },
-                "required": ["device_id", "property", "value"],
-            },
-        ),
-        Tool(
             name="xiaomi_device_info",
             description="获取设备硬件信息与在线状态（型号、固件、硬件版本、MAC）。通过一次握手判断设备是否可达。",
             inputSchema={
@@ -102,21 +88,30 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="xiaomi_raw_command",
-            description="高级：向设备发送原始 miIO 命令（如 legacy 设备的 get_prop / set_power）。用于配置中未映射的能力。",
+            name="xiaomi_camera_snapshot",
+            description="抓取某个摄像头的当前画面(实时快照),返回一张 JPEG 图片。用于查看'摄像头现在拍到了什么'。",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "device_id": {"type": "string", "description": "设备 id"},
-                    "command": {"type": "string", "description": "miIO 命令名，如 'get_prop'"},
-                    "params": {
-                        "type": "array",
-                        "description": "命令参数数组，如 ['power','mode']",
-                        "items": {},
-                        "default": [],
+                    "device_id": {"type": "string", "description": "摄像头 id（protocol 为 camera 的设备）"},
+                },
+                "required": ["device_id"],
+            },
+        ),
+        Tool(
+            name="xiaomi_camera_clip",
+            description="录制某个摄像头的一段实时视频(默认 10 秒),保存为本地 MP4 文件并返回文件路径。",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "device_id": {"type": "string", "description": "摄像头 id"},
+                    "seconds": {
+                        "type": "integer",
+                        "description": "录制时长(秒)，1-300，默认 10。",
+                        "default": 10,
                     },
                 },
-                "required": ["device_id", "command"],
+                "required": ["device_id"],
             },
         ),
         Tool(
@@ -128,8 +123,10 @@ async def list_tools() -> list[Tool]:
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent | ImageContent]:
     try:
+        if name == "xiaomi_camera_snapshot":
+            return await _camera_snapshot(arguments)
         result = await _handle_tool(name, arguments)
         return [TextContent(type="text", text=result)]
     except DeviceError as e:
@@ -147,12 +144,10 @@ async def _handle_tool(name: str, args: dict[str, Any]) -> str:
         return await _get_status(args)
     elif name == "xiaomi_get_property":
         return await _get_property(args)
-    elif name == "xiaomi_set_property":
-        return await _set_property(args)
     elif name == "xiaomi_device_info":
         return await _device_info(args)
-    elif name == "xiaomi_raw_command":
-        return await _raw_command(args)
+    elif name == "xiaomi_camera_clip":
+        return await _camera_clip(args)
     elif name == "xiaomi_get_server_status":
         return _server_status()
     else:
@@ -184,6 +179,16 @@ async def _list_devices(args: dict) -> str:
             entry["online"] = online_map.get(c.id, False)
         out.append(entry)
 
+    for cam in registry.cameras():
+        out.append({
+            "device_id": cam.id,
+            "name": cam.name,
+            "model": cam.model,
+            "protocol": "camera",
+            "rtsp_url": cam.rtsp_url,
+            "tools": ["xiaomi_camera_snapshot", "xiaomi_camera_clip"],
+        })
+
     return json.dumps({"count": len(out), "devices": out}, ensure_ascii=False)
 
 
@@ -200,22 +205,33 @@ async def _get_property(args: dict) -> str:
     return json.dumps({"device_id": args["device_id"], "property": name, "value": value}, ensure_ascii=False)
 
 
-async def _set_property(args: dict) -> str:
-    device = registry.get(args["device_id"])
-    result = await device.set_property(args["property"], args["value"])
-    return json.dumps({"status": "ok", **result}, ensure_ascii=False)
-
-
 async def _device_info(args: dict) -> str:
     device = registry.get(args["device_id"])
     info = await device.get_info()
     return json.dumps(info.to_dict(), ensure_ascii=False)
 
 
-async def _raw_command(args: dict) -> str:
-    device = registry.get(args["device_id"])
-    result = await device.raw_command(args["command"], args.get("params", []))
-    return json.dumps({"device_id": args["device_id"], "command": args["command"], "result": result}, ensure_ascii=False, default=str)
+async def _camera_snapshot(args: dict) -> list[TextContent | ImageContent]:
+    cam = registry.get_camera(args["device_id"])
+    data = await camera.snapshot(cam.id, cam.rtsp_url)
+    b64 = base64.b64encode(data).decode("ascii")
+    caption = json.dumps(
+        {"device_id": cam.id, "name": cam.name, "bytes": len(data), "format": "jpeg"},
+        ensure_ascii=False,
+    )
+    return [
+        ImageContent(type="image", data=b64, mimeType="image/jpeg"),
+        TextContent(type="text", text=caption),
+    ]
+
+
+async def _camera_clip(args: dict) -> str:
+    cam = registry.get_camera(args["device_id"])
+    seconds = int(args.get("seconds", 10))
+    result = await camera.clip(cam.id, cam.rtsp_url, seconds)
+    return json.dumps(
+        {"status": "ok", "device_id": cam.id, "name": cam.name, **result}, ensure_ascii=False
+    )
 
 
 def _server_status() -> str:

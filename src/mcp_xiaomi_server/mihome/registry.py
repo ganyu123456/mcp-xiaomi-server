@@ -16,11 +16,13 @@ class DeviceRegistry:
         self.config_path = config_path
         self.timeout = timeout
         self._devices: dict[str, LocalDevice] = {}
+        self._cameras: dict[str, DeviceConfig] = {}
         self._load_error: Optional[str] = None
 
     def load(self) -> None:
         """Load (or reload) devices from the config file. Never raises."""
         self._devices = {}
+        self._cameras = {}
         self._load_error = None
 
         path = Path(os.path.expanduser(self.config_path))
@@ -42,10 +44,14 @@ class DeviceRegistry:
         for entry in entries:
             try:
                 config = DeviceConfig.from_dict(entry)
-            except DeviceError as e:
+            except DeviceError:
                 # Skip a bad entry but keep loading the rest.
                 continue
-            if config.id in self._devices:
+            if config.is_camera:
+                if config.id not in self._cameras and config.id not in self._devices:
+                    self._cameras[config.id] = config
+                continue
+            if config.id in self._devices or config.id in self._cameras:
                 continue
             self._devices[config.id] = LocalDevice(config, timeout=self.timeout)
 
@@ -66,5 +72,15 @@ class DeviceRegistry:
     def configs(self) -> list[DeviceConfig]:
         return [d.config for d in self._devices.values()]
 
+    def cameras(self) -> list[DeviceConfig]:
+        return list(self._cameras.values())
+
+    def get_camera(self, camera_id: str) -> DeviceConfig:
+        cam = self._cameras.get(camera_id)
+        if cam is None:
+            known = ", ".join(self._cameras.keys()) or "(none)"
+            raise DeviceError(camera_id, f"Camera not found. Configured cameras: {known}")
+        return cam
+
     def __len__(self) -> int:
-        return len(self._devices)
+        return len(self._devices) + len(self._cameras)
