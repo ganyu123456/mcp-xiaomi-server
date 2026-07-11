@@ -17,10 +17,14 @@ services:
       - MCP_PORT=${MCP_PORT:-8092}
       - MCP_XIAOMI_DEVICES=/app/config/devices.json
       - MCP_XIAOMI_TIMEOUT=${MCP_XIAOMI_TIMEOUT:-5}
+      # 摄像头录像保存目录（容器内），配合下方 volume 落到宿主机 ./clips
+      - MCP_XIAOMI_CLIP_DIR=/app/config/clips
 
     volumes:
       # 真实设备清单（含 IP/token），在宿主机准备好后挂载进来
       - ./devices.json:/app/config/devices.json:ro
+      # 录像输出目录：容器写入 /app/config/clips → 落到宿主机 ./clips
+      - ./clips:/app/config/clips
 
     labels:
       - "mcp.server.name=mcp-xiaomi-server"
